@@ -1190,7 +1190,11 @@ class TaskViewModel(torch.nn.Module):
 
 
 class E2EMultiTaskLoss:
-    """End-to-end loss for ``MultiTask26``: detection + pose + segmentation with separate class spaces."""
+    """End-to-end loss for ``MultiTask26``: detection + pose + segmentation with separate class spaces.
+
+    Each ``v8*Loss`` reads labels from ``batch["cls"]``. For independent class spaces, pass optional keys
+    ``cls_det``, ``cls_pose``, and ``cls_seg`` (same layout as ``cls``); if omitted, all branches share ``cls``.
+    """
 
     def __init__(self, model, w_det: float = 1.0, w_pose: float = 1.0, w_seg: float = 1.0) -> None:
         self.base_model = model
@@ -1211,6 +1215,15 @@ class E2EMultiTaskLoss:
         self.final_o2m = 0.1
 
     @staticmethod
+    def _batch_with_cls(batch: dict[str, Any], cls_key: str) -> dict[str, Any]:
+        """Return a shallow copy of ``batch`` using ``batch[cls_key]`` as ``cls`` when present."""
+        if cls_key not in batch:
+            return batch
+        out = dict(batch)
+        out["cls"] = batch[cls_key]
+        return out
+
+    @staticmethod
     def _split_e2e(branch_out: Any) -> tuple[Any, Any | None]:
         if isinstance(branch_out, dict) and "one2many" in branch_out:
             return branch_out["one2many"], branch_out["one2one"]
@@ -1225,17 +1238,20 @@ class E2EMultiTaskLoss:
 
     def __call__(self, preds: Any, batch: dict[str, torch.Tensor]) -> tuple[torch.Tensor, torch.Tensor]:
         o = self.parse_output(preds)
+        b_det = self._batch_with_cls(batch, "cls_det")
+        b_pose = self._batch_with_cls(batch, "cls_pose")
+        b_seg = self._batch_with_cls(batch, "cls_seg")
 
-        def _branch(lm, lo, m, one):
+        def _branch(lm, lo, m, one, b):
             if one is None:
-                return lm.loss(m, batch)
-            l_m, _ = lm.loss(m, batch)
-            l_o, det_o = lo.loss(one, batch)
+                return lm.loss(m, b)
+            l_m, _ = lm.loss(m, b)
+            l_o, det_o = lo.loss(one, b)
             return l_m * self.o2m + l_o * self.o2o, det_o
 
-        det_loss, d_do = _branch(self.det_o2m, self.det_o2o, o["det_m"], o["det_o"])
-        pose_loss, p_do = _branch(self.pose_o2m, self.pose_o2o, o["pose_m"], o["pose_o"])
-        seg_loss, s_do = _branch(self.seg_o2m, self.seg_o2o, o["seg_m"], o["seg_o"])
+        det_loss, d_do = _branch(self.det_o2m, self.det_o2o, o["det_m"], o["det_o"], b_det)
+        pose_loss, p_do = _branch(self.pose_o2m, self.pose_o2o, o["pose_m"], o["pose_o"], b_pose)
+        seg_loss, s_do = _branch(self.seg_o2m, self.seg_o2o, o["seg_m"], o["seg_o"], b_seg)
         # Match Trainer: ``loss.sum()`` — return 1D tensors (det / pose / seg components concatenated).
         total = torch.cat((self.w_det * det_loss, self.w_pose * pose_loss, self.w_seg * seg_loss))
         detach = torch.cat((d_do.flatten(), p_do.flatten(), s_do.flatten()))

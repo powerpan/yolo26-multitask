@@ -28,7 +28,7 @@
 
 | 任务 | 说明 |
 |------|------|
-| 数据管线 | 将标注转为 Ultralytics 训练 `batch`：`cls`/`bboxes`（det）、`keypoints`（pose）、`masks`（seg）；三类可不同实例数 |
+| 数据管线 | 将标注转为 Ultralytics 训练 `batch`：`bboxes` + **`cls_det` / `cls_pose` / `cls_seg`**（或与旧版兼容的共享 `cls`）、`keypoints`（pose）、`masks`（seg）；三类可不同实例数 |
 | 训练入口 | 基于 `ultralytics` 的 `Trainer` 扩展或自定义 loop，确保 `criterion.update()` 与官方 E2E 一致 |
 | 推理与导出 | 统一后处理：三份输出；ONNX/TensorRT 需分别处理各分支 |
 | 权重初始化 | 从 `yolo26n.pt` 等加载 backbone+neck，头部分支按需初始化或微调 |

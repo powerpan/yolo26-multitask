@@ -75,7 +75,10 @@ out = model(x)
 - `MultiTaskModel.init_criterion()` 返回 `E2EMultiTaskLoss`：对 det / pose / seg 分别构造 `v8DetectionLoss`、`PoseLoss26`、`v8SegmentationLoss`，并通过 `TaskViewModel` 让每个损失只「看到」对应子头（`model.model[-1]` 代理）。
 - 返回值形状为 **14 维向量**（3+5+6：det + pose + seg 各分支 loss 分量拼接），与 `Trainer` 中 `loss.sum()` 用法兼容。
 
-**重要**：当前实现假定 batch 内仍提供 Ultralytics 标准键（`batch_idx`、`cls`、`bboxes`、`keypoints`、`masks` 等）。若某图像缺少某任务的标注，需在数据层给出空张量或填充策略；多任务联合 assigner 的细粒度行为仍需在你自己的数据集上验证。
+**重要**：当前实现假定 batch 内仍提供 Ultralytics 标准键（`batch_idx`、`bboxes`、`keypoints`、`masks` 等）。
+
+- **类别**：若检测 / 姿态 / 分割的类别 ID **互不共用**，请在 batch 中提供 `cls_det`、`cls_pose`、`cls_seg`（张量格式与官方 `cls` 相同）；未提供时三任务都会回退使用同一个 `cls`（与旧行为兼容）。
+- 若某图像缺少某任务的标注，需在数据层给出空张量或填充策略；多任务联合 assigner 的细粒度行为仍需在你自己的数据集上验证。
 
 完整任务拆解见 `docs/PROJECT_PLAN.md`。
 
