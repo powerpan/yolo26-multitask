@@ -664,6 +664,19 @@ class MultiTaskModel(DetectionModel):
         """Initialize multitask loss (three separate class spaces; includes E2E when enabled)."""
         return E2EMultiTaskLoss(self)
 
+    def predict(self, x, profile=False, visualize=False, augment=False, embed=None):
+        """Run inference; return detection tensors so validators / predictors stay on the det path."""
+        out = super().predict(x, profile=profile, visualize=visualize, augment=augment, embed=embed)
+        m = self.model[-1]
+        if not isinstance(m, MultiTask26) or isinstance(out, dict):
+            return out
+        det = out["det"]
+        if self.end2end:
+            det = det["one2one"]
+        if isinstance(det, tuple):
+            return det[0]
+        return det
+
 
 class ClassificationModel(BaseModel):
     """YOLO classification model.
@@ -1843,8 +1856,7 @@ def guess_model_task(model):
         """Guess from YAML dictionary."""
         m = cfg["head"][-1][-2].lower()  # output module name
         if "multitask" in m:
-            # No YOLO.task_map entry yet — report detect so high-level loaders do not break.
-            return "detect"
+            return "multitask"
         if m in {"classify", "classifier", "cls", "fc"}:
             return "classify"
         if "detect" in m:
@@ -1870,7 +1882,7 @@ def guess_model_task(model):
                 return cfg2task(eval(x))  # nosec B307: safe eval of known attribute paths
         for m in model.modules():
             if isinstance(m, MultiTask26):
-                return "detect"
+                return "multitask"
             if isinstance(m, (Segment, YOLOESegment)):
                 return "segment"
             elif isinstance(m, Classify):
