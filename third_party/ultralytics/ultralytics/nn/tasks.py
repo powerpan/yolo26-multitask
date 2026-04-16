@@ -1752,11 +1752,10 @@ def parse_model(d, ch, verbose=True):
             if m in {Detect, YOLOEDetect, Segment, Segment26, YOLOESegment, YOLOESegment26, Pose, Pose26, OBB, OBB26}:
                 m.legacy = legacy
         elif m is MultiTask26:
-            # args: nc_det, nc_pose, kpt_shape, nc_seg, nm, npr
+            # args: nc_det, nc_pose, kpt_shape, nc_seg, nm, npr — match Segment26: scale npr (index 5), not nm (4)
             args[0], args[1], args[3] = nc_det, nc_pose, nc_seg
-            args[4] = make_divisible(min(args[4], max_channels) * width, 8)
+            args[5] = make_divisible(min(args[5], max_channels) * width, 8)
             args.extend([reg_max, end2end, [ch[x] for x in f]])
-            m.legacy = legacy  # class-level flag consumed by child Detect heads
         elif m is v10Detect:
             args.append([ch[x] for x in f])
         elif m is ImagePoolingAttn:
@@ -1780,6 +1779,8 @@ def parse_model(d, ch, verbose=True):
         t = str(m)[8:-2].replace("__main__.", "")  # module type
         m_.np = sum(x.numel() for x in m_.parameters())  # number params
         m_.i, m_.f, m_.type = i, f, t  # attach index, 'from' index, type
+        if isinstance(m_, MultiTask26):
+            m_.det.legacy = m_.pose.legacy = m_.seg.legacy = legacy
         if verbose:
             LOGGER.info(f"{i:>3}{f!s:>20}{n_:>3}{m_.np:10.0f}  {t:<45}{args!s:<30}")  # print
         save.extend(x % i for x in ([f] if isinstance(f, int) else f) if x != -1)  # append to savelist
@@ -1842,7 +1843,8 @@ def guess_model_task(model):
         """Guess from YAML dictionary."""
         m = cfg["head"][-1][-2].lower()  # output module name
         if "multitask" in m:
-            return "multitask"
+            # No YOLO.task_map entry yet — report detect so high-level loaders do not break.
+            return "detect"
         if m in {"classify", "classifier", "cls", "fc"}:
             return "classify"
         if "detect" in m:
@@ -1868,7 +1870,7 @@ def guess_model_task(model):
                 return cfg2task(eval(x))  # nosec B307: safe eval of known attribute paths
         for m in model.modules():
             if isinstance(m, MultiTask26):
-                return "multitask"
+                return "detect"
             if isinstance(m, (Segment, YOLOESegment)):
                 return "segment"
             elif isinstance(m, Classify):
