@@ -1,35 +1,39 @@
-# Agent guide
+# Agent guide（yolo26-multitask）
 
-This file orients automated coding agents (and humans) working in this repository.
+## 项目目标
 
-## Repository
+在 **vendored Ultralytics YOLO26**（`third_party/ultralytics`）上实现 **单模型多任务**：共享 backbone+neck，**检测 / 姿态 / 分割** 三支头并行；三类为同一物体不同组件 → **独立 `nc_det` / `nc_pose` / `nc_seg`**。
 
-- **Project**: `yolo26-multitask`
-- **Status**: Minimal footprint today. When you add source, tests, or build tooling, update this section so future runs stay accurate.
+## 关键文件（优先读这些）
 
-## Workflow
+| 主题 | 路径 |
+|------|------|
+| 组合检测头 `MultiTask26` | `third_party/ultralytics/ultralytics/nn/modules/head.py` |
+| 模型类 `MultiTaskModel`、YAML 解析、`parse_model` 中 `MultiTask26` 分支 | `third_party/ultralytics/ultralytics/nn/tasks.py` |
+| 联合损失 `E2EMultiTaskLoss`、`TaskViewModel` | `third_party/ultralytics/ultralytics/utils/loss.py` |
+| 模型 YAML 模板 | `third_party/ultralytics/ultralytics/cfg/models/26/yolo26-multitask.yaml` |
+| 项目计划 / 待办 | `docs/PROJECT_PLAN.md` |
+| Smoke 测试 | `tests/test_multitask26.py` |
+| 本地封装 | `ymt/model.py` |
 
-1. **Branching**: Branch off `main` for substantive work. If your environment requires a prefix/suffix pattern (for example `cursor/<short-description>-438d`), follow it consistently.
-2. **Commits**: One commit per coherent change; messages should state **what** changed and **why**, not vague labels like “fix” or “update” alone.
-3. **Push**: Use `git push -u origin <branch-name>`. Retry on transient network failures if your playbook allows it.
-4. **Pull requests**: When collaborating via a forge, open or update a PR after pushing; describe scope and how you validated the change.
+## 对本 Agent 的约束
 
-## Implementation rules
+1. **以官方代码为基**：新逻辑优先写在 `third_party/ultralytics` 内与现有 YOLO26 模块一致的位置；避免在仓库根目录重写一套 YOLO。
+2. **最小侵入**：只改多任务必需的分支；不要顺手格式化整个上游树。
+3. **上游同步**：`third_party/ultralytics` 为**无 `.git` 的快照**；更新上游请按 `README.md` 重新克隆后再合并本地改动；每次合并后跑 `tests/test_multitask26.py` 并更新 `docs/PROJECT_PLAN.md` 风险说明。
+4. **训练契约**：修改损失时注意 `Trainer` 对 `loss.sum()` 的假设；`E2EMultiTaskLoss` 返回 **1D loss 向量**。
+5. **沟通**：较大里程碑向用户 **Slack** 简短报告（代码路径 + 完成项 + 下一步）；最终交付一个合并到 `main` 的正式 PR（按用户流程）。
 
-- **Scope**: Touch only what the task requires; avoid drive-by refactors and unrelated formatting churn.
-- **Consistency**: Match surrounding code for naming, types, imports, and documentation density.
-- **Docs**: Do not add or heavily rewrite Markdown unless the task explicitly asks for it.
+## 常用命令
 
-## Verification
+```bash
+# 测试
+PYTHONPATH=third_party/ultralytics python3 -m pytest tests/test_multitask26.py -v
 
-- If the repo gains standard entry points (`package.json`, `pyproject.toml`, `Makefile`, `Cargo.toml`, etc.), run the appropriate **lint / test / build** after edits and note the outcome in the PR or commit message.
-- If no automation exists yet, document **manual checks** you performed (how to run, what you verified).
+# 可编辑安装上游（开发机）
+python3 -m pip install -e "third_party/ultralytics"
+```
 
-## Communication
+## 与组织级说明冲突时
 
-- Prefer **reproducible commands** and **concrete file paths** when describing changes.
-- When citing existing code, use the path format your tooling expects so maintainers can jump to definitions quickly.
-
----
-
-*If this file conflicts with organization-wide agent instructions, follow the organization policy and update or remove outdated guidance here.*
+以组织 / 用户明确指令为准，并回写本文件去除过时约束。
