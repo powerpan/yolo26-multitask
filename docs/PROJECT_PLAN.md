@@ -35,5 +35,6 @@
 
 ## 风险与假设
 
-- 联合损失将 **检测、姿态、分割的 GT 共用同一 `batch_idx`/`bboxes`/`cls` 张量**；若某任务无标注，需在数据层填零并 mask，否则 assigner 行为需再验证。
+- 联合损失将 **检测、姿态、分割的 GT 共用同一 `batch_idx`/`bboxes`**；`cls` 可拆为 `cls_det`/`cls_pose`/`cls_seg`（见 `docs/BATCH_SPEC.md`）。**姿态/分割 assigner 仍用同一套 `bboxes` 行**；若部件框与关键点实例不对齐，必须在标注转换阶段修好。
+- **Segment26 + `v8SegmentationLoss`**：训练且存在正 anchor 时需要 **`sem_masks`**（`Proto26` 返回 `(proto, semseg)` 时）；否则 `KeyError`。详见 `docs/BATCH_SPEC.md`。
 - `E2EMultiTaskLoss` 中 `o2m/o2o` 调度使用 `hyp.epochs`（来自 pose 子损失），与单任务 E2E 行为对齐；若需按 det 调度可再改。

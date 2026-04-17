@@ -705,6 +705,20 @@ class MultiTaskModel(DetectionModel):
         """Initialize multitask loss (three separate class spaces; includes E2E when enabled)."""
         return E2EMultiTaskLoss(self)
 
+    def set_head_attr(self, **kwargs):
+        """Apply head attributes to ``MultiTask26`` and its ``det`` / ``pose`` / ``seg`` children."""
+        head = self.model[-1]
+        if not isinstance(head, MultiTask26):
+            return super().set_head_attr(**kwargs)
+        for k, v in kwargs.items():
+            targets = [head, head.det, head.pose, head.seg]
+            if not any(hasattr(t, k) for t in targets):
+                LOGGER.warning(f"Head has no attribute '{k}'.")
+                continue
+            for t in targets:
+                if hasattr(t, k):
+                    setattr(t, k, v)
+
 
 class ClassificationModel(BaseModel):
     """YOLO classification model.
