@@ -15,6 +15,8 @@
 | `third_party/ultralytics/ultralytics/utils/loss.py` | `E2EMultiTaskLoss`、`TaskViewModel` |
 | `ymt/` | 薄封装：`load_multitask_model()` |
 | `docs/PROJECT_PLAN.md` | **项目计划**与待办 |
+| `docs/BATCH_SPEC.md` | **训练 batch 张量约定**（含 `sem_masks`、对齐说明） |
+| `ymt/batch.py` | `validate_multitask_batch` / `assert_multitask_batch` 校验辅助 |
 | `tests/test_multitask26.py` | 构建与前向 smoke 测试 |
 
 ## 上游更新
@@ -78,9 +80,10 @@ out = model(x)
 **重要**：当前实现假定 batch 内仍提供 Ultralytics 标准键（`batch_idx`、`bboxes`、`keypoints`、`masks` 等）。
 
 - **类别**：若检测 / 姿态 / 分割的类别 ID **互不共用**，请在 batch 中提供 `cls_det`、`cls_pose`、`cls_seg`（张量格式与官方 `cls` 相同）；未提供时三任务都会回退使用同一个 `cls`（与旧行为兼容）。
+- **语义分割辅助项**：YOLO26 `Segment26` 训练时 `Proto26` 会输出 `pred_semseg`，损失会读取 **`sem_masks`**（形状与约定见 `docs/BATCH_SPEC.md`）。缺少该键会在存在正样本时直接 `KeyError`。
 - 若某图像缺少某任务的标注，需在数据层给出空张量或填充策略；多任务联合 assigner 的细粒度行为仍需在你自己的数据集上验证。
 
-完整任务拆解见 `docs/PROJECT_PLAN.md`。
+完整任务拆解见 `docs/PROJECT_PLAN.md`；**标注 → batch 对齐**见 `docs/BATCH_SPEC.md`。
 
 ## 测试（本环境已跑通）
 

@@ -13,6 +13,7 @@
 | 联合损失 `E2EMultiTaskLoss`、`TaskViewModel` | `third_party/ultralytics/ultralytics/utils/loss.py` |
 | 模型 YAML 模板 | `third_party/ultralytics/ultralytics/cfg/models/26/yolo26-multitask.yaml` |
 | 项目计划 / 待办 | `docs/PROJECT_PLAN.md` |
+| 训练 batch / 标注对齐 | `docs/BATCH_SPEC.md`，`ymt/batch.py` |
 | Smoke 测试 | `tests/test_multitask26.py` |
 | 本地封装 | `ymt/model.py` |
 

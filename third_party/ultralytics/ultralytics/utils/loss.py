@@ -1193,7 +1193,9 @@ class E2EMultiTaskLoss:
     """End-to-end loss for ``MultiTask26``: detection + pose + segmentation with separate class spaces.
 
     Each ``v8*Loss`` reads labels from ``batch["cls"]``. For independent class spaces, pass optional keys
-    ``cls_det``, ``cls_pose``, and ``cls_seg`` (same layout as ``cls``); if omitted, all branches share ``cls``.
+    ``cls_det``, ``cls_pose``, and ``cls_seg`` (same layout as ``cls``). Each branch receives a **shallow copy**
+    of the batch so ``cls`` can differ per branch without cross-contamination. If a ``cls_*`` key is absent for
+    a branch, that branch uses the original ``cls`` tensor (same reference as in the input batch).
     """
 
     def __init__(self, model, w_det: float = 1.0, w_pose: float = 1.0, w_seg: float = 1.0) -> None:
@@ -1215,12 +1217,18 @@ class E2EMultiTaskLoss:
         self.final_o2m = 0.1
 
     @staticmethod
-    def _batch_with_cls(batch: dict[str, Any], cls_key: str) -> dict[str, Any]:
-        """Return a shallow copy of ``batch`` using ``batch[cls_key]`` as ``cls`` when present."""
-        if cls_key not in batch:
-            return batch
+    def _branch_batch(batch: dict[str, Any], cls_source_key: str | None) -> dict[str, Any]:
+        """Shallow-copy ``batch`` for one loss branch.
+
+        If ``cls_source_key`` is set and present in ``batch``, ``out[\"cls\"]`` is taken from that tensor.
+        Otherwise ``cls`` is copied by reference from the original batch (Ultralytics default).
+
+        Always returns a new dict so branches never share the same mapping object (avoids accidental
+        cross-branch mutation if a loss or future code writes into ``batch``).
+        """
         out = dict(batch)
-        out["cls"] = batch[cls_key]
+        if cls_source_key and cls_source_key in batch:
+            out["cls"] = batch[cls_source_key]
         return out
 
     @staticmethod
@@ -1238,9 +1246,9 @@ class E2EMultiTaskLoss:
 
     def __call__(self, preds: Any, batch: dict[str, torch.Tensor]) -> tuple[torch.Tensor, torch.Tensor]:
         o = self.parse_output(preds)
-        b_det = self._batch_with_cls(batch, "cls_det")
-        b_pose = self._batch_with_cls(batch, "cls_pose")
-        b_seg = self._batch_with_cls(batch, "cls_seg")
+        b_det = self._branch_batch(batch, "cls_det")
+        b_pose = self._branch_batch(batch, "cls_pose")
+        b_seg = self._branch_batch(batch, "cls_seg")
 
         def _branch(lm, lo, m, one, b):
             if one is None:
