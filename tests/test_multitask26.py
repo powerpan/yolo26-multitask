@@ -14,7 +14,7 @@ if ULTRA_ROOT.is_dir() and str(ULTRA_ROOT) not in sys.path:
     sys.path.insert(0, str(ULTRA_ROOT))
 
 from ultralytics.nn.modules.head import MultiTask26  # noqa: E402
-from ultralytics.nn.tasks import MultiTaskModel  # noqa: E402
+from ultralytics.nn.tasks import MultiTaskModel, guess_model_task  # noqa: E402
 
 
 YAML = ULTRA_ROOT / "ultralytics" / "cfg" / "models" / "26" / "yolo26-multitask.yaml"
@@ -35,9 +35,20 @@ def test_multitask_model_build_and_forward():
 
     model.eval()
     out_e = model(x)
-    assert isinstance(out_e, dict)
-    for k in ("det", "pose", "seg"):
-        assert isinstance(out_e[k], (tuple, torch.Tensor, dict))
+    # Eval / val path unwraps the detection branch for compatibility with detection NMS.
+    assert not isinstance(out_e, dict)
+
+
+def test_guess_model_task_multitask_yaml():
+    assert guess_model_task(YAML) == "multitask"
+
+
+def test_multitask_predict_unwraps_det():
+    model = MultiTaskModel(cfg=str(YAML), ch=3, verbose=False)
+    x = torch.randn(1, 3, 256, 256)
+    model.eval()
+    out = model.predict(x)
+    assert not isinstance(out, dict)
 
 
 def test_multitask_head_shapes():

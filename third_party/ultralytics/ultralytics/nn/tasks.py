@@ -412,7 +412,10 @@ class DetectionModel(BaseModel):
 
             def _forward_mt(x):
                 out = self.forward(x)
-                branch = out["det"]
+                if isinstance(out, dict):
+                    branch = out["det"]
+                else:
+                    branch = out  # MultiTaskModel.predict unwraps to det branch only
                 if self.end2end:
                     branch = branch["one2many"]
                 return branch["feats"]
@@ -659,6 +662,44 @@ class MultiTaskModel(DetectionModel):
             self.args = DEFAULT_CFG
         if not isinstance(self.model[-1], MultiTask26):
             raise TypeError(f"Expected MultiTask26 as final layer, got {type(self.model[-1])}")
+
+    def _predict_once(self, x, profile=False, visualize=False, embed=None):
+        """Run forward like :meth:`BaseModel._predict_once` but unwrap detection tensors for val/predict.
+
+        The multitask head returns ``{"det","pose","seg"}``; detection validators and NMS expect the same tensor layout
+        as a single-task :class:`Detect` head, i.e. the ``det`` branch only.
+        """
+        y, dt, embeddings = [], [], []
+        embed = frozenset(embed) if embed is not None else {-1}
+        max_idx = max(embed)
+        for m in self.model:
+            if m.f != -1:
+                x = y[m.f] if isinstance(m.f, int) else [x if j == -1 else y[j] for j in m.f]
+            if profile:
+                self._profile_one_layer(m, x, dt)
+            x = m(x)
+            y.append(x if m.i in self.save else None)
+            if visualize:
+                feature_visualization(x, m.type, m.i, save_dir=visualize)
+            if m.i in embed:
+                if isinstance(x, dict) and "det" in x:
+                    det_x = x["det"]
+                    if isinstance(det_x, dict) and "one2many" in det_x:
+                        det_feats = det_x["one2many"]["feats"]
+                    elif isinstance(det_x, dict) and "feats" in det_x:
+                        det_feats = det_x["feats"]
+                    else:
+                        det_feats = det_x
+                    embeddings.append(
+                        torch.nn.functional.adaptive_avg_pool2d(det_feats[0], (1, 1)).squeeze(-1).squeeze(-1)
+                    )
+                else:
+                    embeddings.append(torch.nn.functional.adaptive_avg_pool2d(x, (1, 1)).squeeze(-1).squeeze(-1))
+                if m.i == max_idx:
+                    return torch.unbind(torch.cat(embeddings, 1), dim=0)
+        if not self.training and isinstance(self.model[-1], MultiTask26) and isinstance(x, dict) and "det" in x:
+            return x["det"]
+        return x
 
     def init_criterion(self):
         """Initialize multitask loss (three separate class spaces; includes E2E when enabled)."""
@@ -1836,15 +1877,16 @@ def guess_model_task(model):
         model (torch.nn.Module | dict | str | Path): PyTorch model, model configuration dict, or model file path.
 
     Returns:
-        (str): Task of the model ('detect', 'segment', 'classify', 'pose', 'obb').
+        (str): Task of the model ('detect', 'segment', 'classify', 'pose', 'obb', 'multitask').
     """
+    if isinstance(model, (str, Path)) and "multitask" in Path(model).stem.lower():
+        return "multitask"
 
     def cfg2task(cfg):
         """Guess from YAML dictionary."""
         m = cfg["head"][-1][-2].lower()  # output module name
         if "multitask" in m:
-            # No YOLO.task_map entry yet — report detect so high-level loaders do not break.
-            return "detect"
+            return "multitask"
         if m in {"classify", "classifier", "cls", "fc"}:
             return "classify"
         if "detect" in m:
@@ -1870,7 +1912,7 @@ def guess_model_task(model):
                 return cfg2task(eval(x))  # nosec B307: safe eval of known attribute paths
         for m in model.modules():
             if isinstance(m, MultiTask26):
-                return "detect"
+                return "multitask"
             if isinstance(m, (Segment, YOLOESegment)):
                 return "segment"
             elif isinstance(m, Classify):
@@ -1899,6 +1941,6 @@ def guess_model_task(model):
     # Unable to determine task from model
     LOGGER.warning(
         "Unable to automatically guess model task, assuming 'task=detect'. "
-        "Explicitly define task for your model, i.e. 'task=detect', 'segment', 'classify','pose' or 'obb'."
+        "Explicitly define task for your model, i.e. 'task=detect', 'segment', 'classify', 'pose', 'obb', or 'multitask'."
     )
     return "detect"  # assume detect

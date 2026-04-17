@@ -14,7 +14,7 @@ import torch.nn as nn
 from ultralytics.data import build_dataloader, build_yolo_dataset
 from ultralytics.engine.trainer import BaseTrainer
 from ultralytics.models import yolo
-from ultralytics.nn.tasks import DetectionModel
+from ultralytics.nn.tasks import DetectionModel, MultiTaskModel
 from ultralytics.utils import DEFAULT_CFG, LOGGER, RANK
 from ultralytics.utils.patches import override_configs
 from ultralytics.utils.plotting import plot_images, plot_labels
@@ -249,3 +249,14 @@ class DetectionTrainer(BaseTrainer):
         n = len(train_dataset)
         del train_dataset  # free memory
         return super().auto_batch(max_num_obj, dataset_size=n)
+
+
+class MultiTaskTrainer(DetectionTrainer):
+    """Train :class:`~ultralytics.nn.tasks.MultiTaskModel` with the detection data pipeline and multitask loss."""
+
+    def get_model(self, cfg: str | None = None, weights: str | None = None, verbose: bool = True):
+        """Return a multitask model built from YAML (same interface as :meth:`DetectionTrainer.get_model`)."""
+        model = MultiTaskModel(cfg, nc=self.data["nc"], ch=self.data["channels"], verbose=verbose and RANK == -1)
+        if weights:
+            model.load(weights)
+        return model
