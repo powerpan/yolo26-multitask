@@ -697,9 +697,25 @@ class MultiTaskModel(DetectionModel):
                     embeddings.append(torch.nn.functional.adaptive_avg_pool2d(x, (1, 1)).squeeze(-1).squeeze(-1))
                 if m.i == max_idx:
                     return torch.unbind(torch.cat(embeddings, 1), dim=0)
-        if not self.training and isinstance(self.model[-1], MultiTask26) and isinstance(x, dict) and "det" in x:
+        # Unwrap dict for detection NMS / metrics, but keep full multitask dict when computing val loss
+        # (validator runs model.eval() then model.loss(batch, preds) — see BaseValidator).
+        if (
+            not self.training
+            and not getattr(self, "_multitask_val_loss", False)
+            and isinstance(self.model[-1], MultiTask26)
+            and isinstance(x, dict)
+            and "det" in x
+        ):
             return x["det"]
         return x
+
+    def loss(self, batch, preds=None):
+        """Like :meth:`DetectionModel.loss` but accept multitask dict preds from a prior forward in val."""
+        if getattr(self, "criterion", None) is None:
+            self.criterion = self.init_criterion()
+        if preds is None:
+            preds = self.forward(batch["img"])
+        return self.criterion(preds, batch)
 
     def init_criterion(self):
         """Initialize multitask loss (three separate class spaces; includes E2E when enabled)."""

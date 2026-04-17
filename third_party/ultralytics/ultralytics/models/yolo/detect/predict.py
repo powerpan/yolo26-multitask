@@ -3,6 +3,7 @@
 from ultralytics.engine.predictor import BasePredictor
 from ultralytics.engine.results import Results
 from ultralytics.utils import nms, ops
+from ultralytics.utils.torch_utils import unwrap_model
 
 
 class DetectionPredictor(BasePredictor):
@@ -120,3 +121,43 @@ class DetectionPredictor(BasePredictor):
         """
         pred[:, :4] = ops.scale_boxes(img.shape[2:], pred[:, :4], orig_img.shape)
         return Results(orig_img, path=img_path, names=self.model.names, boxes=pred[:, :6])
+
+
+class MultiTaskPredictor(DetectionPredictor):
+    """Detection predictor for :class:`~ultralytics.nn.tasks.MultiTaskModel` (det branch uses ``nc_det``, not legacy ``nc``)."""
+
+    def postprocess(self, preds, img, orig_imgs, **kwargs):
+        """NMS with ``nc_det`` from :class:`~ultralytics.nn.modules.head.MultiTask26` when ``task`` is ``multitask``."""
+        save_feats = getattr(self, "_feats", None) is not None
+        um = unwrap_model(self.model)
+        head = um.model[-1] if hasattr(um, "model") else None
+        nc_nms = 0 if self.args.task == "detect" else len(self.model.names)
+        if self.args.task == "multitask" and head is not None and hasattr(head, "nc_det"):
+            nc_nms = int(head.nc_det)
+        preds = nms.non_max_suppression(
+            preds,
+            self.args.conf,
+            self.args.iou,
+            self.args.classes,
+            self.args.agnostic_nms,
+            max_det=self.args.max_det,
+            nc=nc_nms,
+            end2end=getattr(self.model, "end2end", False),
+            rotated=self.args.task == "obb",
+            return_idxs=save_feats,
+        )
+
+        if not isinstance(orig_imgs, list):
+            orig_imgs = ops.convert_torch2numpy_batch(orig_imgs)[..., ::-1]
+
+        if save_feats:
+            obj_feats = self.get_obj_feats(self._feats, preds[1])
+            preds = preds[0]
+
+        results = self.construct_results(preds, img, orig_imgs, **kwargs)
+
+        if save_feats:
+            for r, f in zip(results, obj_feats):
+                r.feats = f
+
+        return results

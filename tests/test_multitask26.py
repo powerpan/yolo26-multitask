@@ -38,6 +38,16 @@ def test_multitask_model_build_and_forward():
     # Eval / val path unwraps the detection branch for compatibility with detection NMS.
     assert not isinstance(out_e, dict)
 
+    # Training validation computes loss from full multitask dict while model stays in eval mode.
+    model.eval()
+    setattr(model, "_multitask_val_loss", True)
+    try:
+        out_val = model(x)
+    finally:
+        delattr(model, "_multitask_val_loss")
+    assert isinstance(out_val, dict)
+    assert set(out_val) == {"det", "pose", "seg"}
+
 
 def test_guess_model_task_multitask_yaml():
     assert guess_model_task(YAML) == "multitask"
