@@ -63,6 +63,23 @@ out = model(x)
 
 推理态下各分支仍返回 Ultralytics 原有格式（元组或张量）；若需要统一封装，可在业务层解析 `out["det"]` 等。
 
+### 数据管线辅助
+
+`ymt.batch` 现在提供 `collate_multitask_samples()`，可以把“按图像组织、按实例写标签”的样本列表整理成训练 batch：
+
+```python
+from ymt import collate_multitask_samples, assert_multitask_batch
+
+batch = collate_multitask_samples(samples, kpt_shape=(8, 3))
+assert_multitask_batch(batch, (8, 3))
+```
+
+每个 sample 需要包含：
+
+- `img`: `(3, H, W)`
+- `instances`: 列表；每个实例至少要有 `bbox`，并提供 `cls_det` / `cls_pose` / `cls_seg`
+- 可选 `keypoints`、`mask`、`sem_masks`
+
 ### 类别与关键点
 
 编辑 `yolo26-multitask.yaml` 顶部字段：

@@ -44,4 +44,10 @@ Ultralytics 的 `v8SegmentationLoss` 依赖 `model.args.overlap_mask`：
 
 ## 5. 辅助校验
 
-Python 包 `ymt.batch` 提供 `validate_multitask_batch` 与 `assert_multitask_batch`，在训练循环前调用可减少维度/键名错误。
+Python 包 `ymt.batch` 提供 `validate_multitask_batch`、`assert_multitask_batch` 与 `collate_multitask_samples`：
+
+- `validate_multitask_batch(batch, kpt_shape)`：返回可读的校验问题列表
+- `assert_multitask_batch(batch, kpt_shape)`：有问题时直接抛 `ValueError`
+- `collate_multitask_samples(samples, kpt_shape)`：把“按图像组织、按实例写标签”的样本列表整理成训练 batch
+
+建议在训练循环前先调用校验函数，能显著减少维度 / 键名错误。
